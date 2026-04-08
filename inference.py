@@ -40,6 +40,7 @@ if hasattr(sys.stdout, "reconfigure"):
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
 HF_TOKEN     = os.getenv("HF_TOKEN")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 SERVER_URL   = os.getenv("OPENENV_SERVER_URL", "ws://localhost:7860")
 BENCHMARK    = "prior_auth_env"
 
