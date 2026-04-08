@@ -1,29 +1,68 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.pytest_cache/
-.mypy_cache/
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
 # Virtual environments
-.venv/
-venv/
-env/
-
-# Secrets / local env
 .env
-.env.*
-!.env.example
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# OS / editor
-.DS_Store
-Thumbs.db
+# Logs and databases
+*.log
+*.sqlite3
+
+# IDEs and Editors
 .idea/
 .vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
-# Build / runtime artifacts
-outputs/
-dist/
-build/
-*.log
+# Testing and type checking
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.pycover
+.hypothesis/
+.pytest_cache/
+cover/
+.mypy_cache/
+.pyre/
+
+# AI Assistants / Local Temp
+.gemini/
+test_*.py[cod]
