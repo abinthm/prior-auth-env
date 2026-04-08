@@ -1,12 +1,35 @@
 name: prior-auth-env
 version: "1.0.0"
 description: >
-  Prior authorization simulation environment for healthcare AI agent training.
-  An AI agent navigates US health insurance prior authorization workflows,
-  learning to obtain approvals with minimal steps across three difficulty levels.
+  Prior Authorization OpenEnv — a real-world healthcare RCM environment where
+  an AI agent navigates US health insurance prior authorization workflows.
+  Covers 3 tasks from simple documentation submission (easy) to multi-stage
+  appeal + peer-to-peer + IRO escalation (hard). Realistic denial sequences,
+  typed Pydantic models, dense partial-progress rewards, and a deterministic
+  fallback policy for reproducible baselines.
+author: abin334
+license: BSD-3-Clause
 tags:
   - openenv
   - healthcare
   - prior-authorization
   - rcm
   - real-world
+  - insurance
+  - rl-environment
+tasks:
+  - name: easy_missing_docs
+    difficulty: easy
+    description: Submit missing clinical documentation to resolve a simple info-request denial.
+    step_limit: 8
+    optimal_steps: 3
+  - name: step_therapy_required
+    difficulty: medium
+    description: Navigate two sequential step-therapy denials requiring different documents at each stage.
+    step_limit: 14
+    optimal_steps: 6
+  - name: medical_necessity_dispute
+    difficulty: hard
+    description: Full 4-stage escalation — gather docs, appeal, peer-to-peer review, IRO escalation.
+    step_limit: 26
+    optimal_steps: 13

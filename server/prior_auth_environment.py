@@ -475,18 +475,29 @@ class PriorAuthEnvironment(Environment):
         )
 
     def _handle_escalate(self, params: dict[str, Any]) -> tuple[str, float, bool]:
-        if self._appeal_stage < 2:
+        if self._appeal_stage < 3:
             self._unnecessary_actions += 1
-            return "Exhausting internal appeals first is required before external review.", -0.05, False
+            return (
+                "Peer-to-peer review must be completed before requesting external IRO review. "
+                "Complete the peer-to-peer process first.",
+                -0.05,
+                False,
+            )
+
+        if self._appeal_stage >= 4:
+            self._unnecessary_actions += 1
+            return "External IRO review already escalated.", -0.03, False
 
         self._appeal_stage = 4
         self._payer_status = "approved"
+        self._episode_done = True
         self._mark_correct_path("escalate_to_external_review")
         return (
             "Case escalated to Independent Review Organization (IRO). "
-            "IRO determination: Medically necessary. Authorization APPROVED.",
-            0.08,
-            False,
+            "IRO determination: Medically necessary. "
+            f"Authorization APPROVED. IRO Auth number: IRO-{datetime.now().strftime('%Y%m%d')}-{self._episode_id[:4].upper()}",
+            0.15,
+            True,
         )
 
     def _handle_resolve(self, params: dict[str, Any]) -> tuple[str, float, bool]:
