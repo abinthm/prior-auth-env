@@ -3,7 +3,7 @@ from __future__ import annotations
 from openenv.core.client_types import StepResult
 from openenv.core.env_client import EnvClient
 
-from .models import PriorAuthAction, PriorAuthObservation, PriorAuthState
+from models import PriorAuthAction, PriorAuthObservation, PriorAuthState
 
 
 class PriorAuthEnv(EnvClient[PriorAuthAction, PriorAuthObservation, PriorAuthState]):

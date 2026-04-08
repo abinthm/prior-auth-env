@@ -6,7 +6,7 @@
 
 """Prior authorization OpenEnv package exports."""
 
-from .client import PriorAuthEnv
-from .models import PriorAuthAction, PriorAuthObservation, PriorAuthState
+from client import PriorAuthEnv
+from models import PriorAuthAction, PriorAuthObservation, PriorAuthState
 
 __all__ = ["PriorAuthEnv", "PriorAuthAction", "PriorAuthObservation", "PriorAuthState"]
