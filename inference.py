@@ -31,7 +31,8 @@ if __package__ in (None, ""):
 
 from openai import OpenAI
 
-from prior_auth_env import PriorAuthAction, PriorAuthEnv
+from client import PriorAuthEnv
+from models import PriorAuthAction
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
