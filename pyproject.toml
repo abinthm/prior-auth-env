@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prior-auth-env"
+version = "1.0.0"
+description = "OpenEnv Prior Authorization Environment"
+requires-python = ">=3.11"
+dependencies = [
+    "openenv-core>=0.2.3",
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "httpx>=0.28.1",
+    "openai>=2.7.2",
+]
+
+[project.scripts]
+server = "prior_auth_env.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["prior_auth_env", "prior_auth_env.server", "prior_auth_env.server.scenarios", "prior_auth_env.server.graders"]
+package-dir = { "prior_auth_env" = ".", "prior_auth_env.server" = "server", "prior_auth_env.server.scenarios" = "server/scenarios", "prior_auth_env.server.graders" = "server/graders" }
+

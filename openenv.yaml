@@ -1,0 +1,12 @@
+name: prior-auth-env
+version: "1.0.0"
+description: >
+  Prior authorization simulation environment for healthcare AI agent training.
+  An AI agent navigates US health insurance prior authorization workflows,
+  learning to obtain approvals with minimal steps across three difficulty levels.
+tags:
+  - openenv
+  - healthcare
+  - prior-authorization
+  - rcm
+  - real-world
