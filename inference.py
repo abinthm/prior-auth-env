@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 import sys
 import textwrap
 import time
@@ -45,6 +44,9 @@ LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 SERVER_URL   = os.getenv("OPENENV_SERVER_URL", "ws://localhost:7860")
 BENCHMARK    = "prior_auth_env"
 
+if HF_TOKEN is None:
+    raise ValueError("HF_TOKEN environment variable is required")
+
 TASKS        = ["easy_missing_docs", "step_therapy_required", "medical_necessity_dispute"]
 TEMPERATURE  = 0.1
 MAX_TOKENS   = 512
@@ -58,28 +60,164 @@ SYSTEM_PROMPT = textwrap.dedent(
     authorization requests for a medical practice. Your goal is to obtain
     insurance approval as efficiently as possible.
 
-    AVAILABLE ACTIONS — respond with ONLY valid JSON matching one of these exactly:
-    {"action_type": "submit_auth_request",       "params": {"procedure_code": "72148", "diagnosis_code": "M54.5"}}
-    {"action_type": "get_patient_records",        "params": {"record_type": "clinical_notes", "days_back": 90}}
-    {"action_type": "get_denial_details",         "params": {}}
-    {"action_type": "check_payer_criteria",       "params": {}}
-    {"action_type": "submit_supporting_docs",     "params": {"doc_type": "clinical_notes"}}
-    {"action_type": "submit_appeal",              "params": {"appeal_type": "formal_written", "rationale": "..."}}
-    {"action_type": "request_peer_to_peer",       "params": {"urgency": "routine"}}
-    {"action_type": "prepare_clinical_summary",   "params": {"key_findings": ["finding1", "finding2"]}}
-    {"action_type": "submit_peer_to_peer_summary","params": {"content": "..."}}
-    {"action_type": "check_auth_status",          "params": {}}
-    {"action_type": "escalate_to_external_review","params": {}}
-    {"action_type": "resolve",                    "params": {"outcome": "approved", "notes": "brief summary"}}
-
     RULES:
     - Always call submit_auth_request first.
     - After a denial, get_denial_details and check_payer_criteria before acting.
     - Retrieve a record with get_patient_records before submitting it.
     - Call resolve when the authorization is APPROVED or when you have exhausted options.
-    - Output ONLY the JSON object — no explanation, no markdown.
     """
 ).strip()
+
+PRIOR_AUTH_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_auth_request",
+            "description": "Submit a new prior authorization request.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "procedure_code": {"type": "string"},
+                    "diagnosis_code": {"type": "string"}
+                },
+                "required": ["procedure_code", "diagnosis_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_patient_records",
+            "description": "Retrieve medical records for the patient.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "record_type": {"type": "string"},
+                    "days_back": {"type": "integer"}
+                },
+                "required": ["record_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_supporting_docs",
+            "description": "Submit a retrieved document to the payer.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "doc_type": {"type": "string"}
+                },
+                "required": ["doc_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_denial_details",
+            "description": "View details of an authorization denial.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_payer_criteria",
+            "description": "Check exactly what the payer policy requires for approval.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_appeal",
+            "description": "Submit a formal written appeal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "appeal_type": {"type": "string"},
+                    "rationale": {"type": "string"}
+                },
+                "required": ["appeal_type", "rationale"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_peer_to_peer",
+            "description": "Request a peer-to-peer physician review call.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "urgency": {"type": "string"}
+                },
+                "required": ["urgency"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "prepare_clinical_summary",
+            "description": "Extract key findings to prepare a clinical summary for a P2P call.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key_findings": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["key_findings"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_peer_to_peer_summary",
+            "description": "Submit the prepared clinical summary during the P2P phase.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"}
+                },
+                "required": ["content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "escalate_to_external_review",
+            "description": "Escalate the dispute to an Independent Review Organization (IRO).",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_auth_status",
+            "description": "Check the status without performing any action.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "resolve",
+            "description": "Mark the authorization as resolved or terminal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "outcome": {"type": "string"},
+                    "notes": {"type": "string"}
+                },
+                "required": ["outcome"]
+            }
+        }
+    }
+]
 
 
 # ── Logging helpers (mandatory competition format) ────────────────────────────
@@ -143,207 +281,49 @@ def format_observation(obs, step: int) -> str:
     return "\n".join(lines)
 
 
-# ── Action parsing ────────────────────────────────────────────────────────────
-def parse_action(text: str) -> PriorAuthAction:
-    text = text.strip()
-    # Strip code fences if present
-    if "```" in text:
-        match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
-        if match:
-            text = match.group(1).strip()
-    try:
-        data = json.loads(text)
-        return PriorAuthAction(
-            action_type=data.get("action_type", "check_auth_status"),
-            params=data.get("params", {}),
-        )
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-                return PriorAuthAction(
-                    action_type=data.get("action_type", "check_auth_status"),
-                    params=data.get("params", {}),
-                )
-            except json.JSONDecodeError:
-                pass
-    return PriorAuthAction(action_type="check_auth_status", params={})
-
-
-# ── Fallback (deterministic) policy ──────────────────────────────────────────
-_PROC_DIAG = {
-    "easy_missing_docs":        ("72148",  "M54.5"),
-    "step_therapy_required":    ("J0135",  "M06.09"),
-    "medical_necessity_dispute":("22612",  "M43.16"),
-}
-
-
-def fallback_policy(task_name: str, obs) -> PriorAuthAction:
-    """Rule-based policy that partially solves each task without an LLM."""
-    if obs.done:
-        return PriorAuthAction(action_type="check_auth_status", params={})
-
-    # --- Step 0: always submit auth first ---
-    if obs.step_number == 0:
-        proc, diag = _PROC_DIAG[task_name]
-        return PriorAuthAction(
-            action_type="submit_auth_request",
-            params={"procedure_code": proc, "diagnosis_code": diag},
-        )
-
-    # ── EASY: missing documentation ───────────────────────────────────────────
-    if task_name == "easy_missing_docs":
-        if "clinical_notes" not in obs.retrieved_records:
-            return PriorAuthAction(
-                action_type="get_patient_records",
-                params={"record_type": "clinical_notes", "days_back": 90},
-            )
-        if "clinical_notes" not in obs.submitted_documents:
-            return PriorAuthAction(
-                action_type="submit_supporting_docs",
-                params={"doc_type": "clinical_notes"},
-            )
-        if obs.payer_status == "approved":
-            return PriorAuthAction(
-                action_type="resolve",
-                params={"outcome": "approved", "notes": "clinical_notes accepted, authorization granted"},
-            )
-        return PriorAuthAction(action_type="check_auth_status", params={})
-
-    # ── MEDIUM: step therapy ──────────────────────────────────────────────────
-    if task_name == "step_therapy_required":
-        if "medication_history" not in obs.retrieved_records:
-            return PriorAuthAction(
-                action_type="get_patient_records",
-                params={"record_type": "medication_history", "days_back": 365},
-            )
-        if "medication_history" not in obs.submitted_documents:
-            return PriorAuthAction(
-                action_type="submit_supporting_docs",
-                params={"doc_type": "medication_history"},
-            )
-        if "visit_notes" not in obs.retrieved_records:
-            return PriorAuthAction(
-                action_type="get_patient_records",
-                params={"record_type": "visit_notes", "days_back": 180},
-            )
-        if "visit_notes" not in obs.submitted_documents:
-            return PriorAuthAction(
-                action_type="submit_supporting_docs",
-                params={"doc_type": "visit_notes"},
-            )
-        if obs.payer_status == "approved":
-            return PriorAuthAction(
-                action_type="resolve",
-                params={"outcome": "approved", "notes": "step therapy documented, authorization granted"},
-            )
-        return PriorAuthAction(action_type="check_auth_status", params={})
-
-    # ── HARD: medical necessity dispute ───────────────────────────────────────
-    if task_name == "medical_necessity_dispute":
-        if obs.payer_status in ("denied", "info_requested") and "imaging" not in obs.retrieved_records:
-            return PriorAuthAction(
-                action_type="get_patient_records",
-                params={"record_type": "imaging"},
-            )
-        if obs.payer_status in ("denied", "info_requested") and "functional_assessment" not in obs.retrieved_records:
-            return PriorAuthAction(
-                action_type="get_patient_records",
-                params={"record_type": "functional_assessment"},
-            )
-        if obs.payer_status in ("denied", "info_requested") and "clinical_notes" not in obs.retrieved_records:
-            return PriorAuthAction(
-                action_type="get_patient_records",
-                params={"record_type": "clinical_notes"},
-            )
-        for doc in ["imaging", "functional_assessment", "clinical_notes"]:
-            if doc in obs.retrieved_records and doc not in obs.submitted_documents:
-                return PriorAuthAction(
-                    action_type="submit_supporting_docs",
-                    params={"doc_type": doc},
-                )
-        if obs.appeal_stage == 0 and obs.payer_status in ("denied", "info_requested"):
-            return PriorAuthAction(
-                action_type="submit_appeal",
-                params={
-                    "appeal_type": "formal_written",
-                    "rationale": (
-                        "Patient meets all criteria for L4-L5 fusion: Grade II spondylolisthesis "
-                        "confirmed on MRI, ODI 62% severe disability, 18 months failed conservative "
-                        "care including PT, ESIs x3, and medications. Surgical intervention is the "
-                        "only remaining option."
-                    ),
-                },
-            )
-        if obs.appeal_stage == 1:
-            return PriorAuthAction(
-                action_type="request_peer_to_peer",
-                params={"urgency": "routine"},
-            )
-        if obs.appeal_stage == 2:
-            return PriorAuthAction(
-                action_type="prepare_clinical_summary",
-                params={
-                    "key_findings": [
-                        "Grade II L4/L5 spondylolisthesis on MRI 2024-01-08",
-                        "ODI score 62% — severe disability class",
-                        "18 months conservative care: PT x 24 weeks, ESI x3, gabapentin + meloxicam",
-                        "All conservative measures failed — no functional improvement",
-                        "Orthopedic surgeon attestation: surgical intervention required",
-                    ]
-                },
-            )
-        if obs.appeal_stage == 2 and "clinical_summary" in obs.retrieved_records:
-            return PriorAuthAction(
-                action_type="submit_peer_to_peer_summary",
-                params={"content": "Clinical summary submitted per peer-to-peer review request"},
-            )
-        if obs.appeal_stage >= 3:
-            return PriorAuthAction(
-                action_type="escalate_to_external_review",
-                params={},
-            )
-        if obs.payer_status == "approved":
-            return PriorAuthAction(
-                action_type="resolve",
-                params={
-                    "outcome": "approved",
-                    "notes": "Authorization obtained after peer-to-peer review",
-                },
-            )
-        return PriorAuthAction(action_type="check_auth_status", params={})
-
-    return PriorAuthAction(action_type="check_auth_status", params={})
-
-
 # ── LLM action selection ──────────────────────────────────────────────────────
 def choose_action(
     task_name: str,
     obs,
     history: List[dict],
-    llm: Optional[OpenAI],
+    llm: OpenAI,
 ) -> tuple[PriorAuthAction, Optional[str]]:
     """Returns (action, error_string_or_None)."""
-    if llm is None:
-        return fallback_policy(task_name, obs), None
+    
+    if obs.done:
+        return PriorAuthAction(action_type="check_auth_status", params={}), None
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    
     try:
         completion = llm.chat.completions.create(
             model=MODEL_NAME,
             messages=messages,
             temperature=TEMPERATURE,
             max_tokens=MAX_TOKENS,
+            tools=PRIOR_AUTH_TOOLS,
+            tool_choice="required"
         )
-        response_text = completion.choices[0].message.content or "{}"
-        return parse_action(response_text), None
+        
+        tool_calls = completion.choices[0].message.tool_calls
+        if not tool_calls:
+            return PriorAuthAction(action_type="check_auth_status", params={}), "No tool calls generated."
+            
+        action_name = tool_calls[0].function.name
+        action_args = {}
+        try:
+            action_args = json.loads(tool_calls[0].function.arguments)
+        except Exception:
+            pass # Use empty dict if arguments are malformed
+            
+        return PriorAuthAction(action_type=action_name, params=action_args), None
+        
     except Exception as exc:
-        return fallback_policy(task_name, obs), str(exc)
+        return PriorAuthAction(action_type="check_auth_status", params={}), str(exc)
 
 
 # ── Episode runner ────────────────────────────────────────────────────────────
-async def run_task(task_name: str, env: PriorAuthEnv, llm: Optional[OpenAI]) -> float:
+async def run_task(task_name: str, env: PriorAuthEnv, llm: OpenAI) -> float:
     """Run one full episode; returns final score in [0, 1]."""
     result = await env.reset(task_name=task_name)
     obs    = result.observation
@@ -367,7 +347,10 @@ async def run_task(task_name: str, env: PriorAuthEnv, llm: Optional[OpenAI]) -> 
                 history = history[-(MAX_HISTORY * 2):]
 
             action, err = choose_action(task_name, obs, history, llm)
-            history.append({"role": "assistant", "content": json.dumps(action.model_dump())})
+            history.append({
+                "role": "assistant",
+                "content": f"Executed action: {action.action_type} with args: {json.dumps(action.params)}"
+            })
 
             result = await env.step(action)
             obs    = result.observation
@@ -401,7 +384,7 @@ async def run_task(task_name: str, env: PriorAuthEnv, llm: Optional[OpenAI]) -> 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 async def amain() -> None:
-    llm    = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if HF_TOKEN else None
+    llm    = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
     scores: dict[str, float] = {}
 
     async with PriorAuthEnv(base_url=SERVER_URL) as env:
@@ -433,3 +416,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
