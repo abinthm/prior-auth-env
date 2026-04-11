@@ -12,7 +12,8 @@ class BaseGrader(ABC):
 
     def normalize(self, raw: float, max_possible: float = 1.0, min_possible: float = -0.3) -> float:
         normalized = (raw - min_possible) / (max_possible - min_possible)
-        return max(0.0, min(1.0, normalized))
+        # Strictly (0, 1) limits per Hackathon validator rules
+        return max(0.01, min(0.99, normalized))
 
     @abstractmethod
     def compute_final_score(

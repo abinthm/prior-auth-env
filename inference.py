@@ -373,7 +373,8 @@ async def run_task(task_name: str, env: PriorAuthEnv, llm: OpenAI) -> float:
 
         # Final score is the last reward when done==True (grader terminal score)
         score   = float(obs.reward or 0.0) if rewards else 0.0
-        score   = max(0.0, min(1.0, score))
+        # Hackathon rule: strictly within (0, 1) bounds
+        score   = max(0.01, min(0.99, score))
         success = score >= 0.5
 
     finally:
